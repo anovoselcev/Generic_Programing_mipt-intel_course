@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <stdexcept>
+#include <cstring>
 #include <iterator.hpp>
 
 namespace my {
@@ -25,15 +26,15 @@ class cow_base_string{
     ControlBlock* info = nullptr;
 
     bool clean(){
-        if(info){
+        if(info && info->data){
             info->ref.fetch_sub(1);
             if(info->ref.load() == 0){
                 Allocator alloc;
-                alloc.dealocate(info->data, info->size);
+                alloc.deallocate(info->data, info->size);
                 delete info;
-                info = nullptr;
-                return true;
             }
+            info = nullptr;
+            return true;
         }
         return false;
     }
@@ -50,6 +51,16 @@ class cow_base_string{
             info->size = size;
             info->ref.fetch_add(1);
         }
+    }
+
+    void create(const CharT* data, size_t n){
+        Allocator alloc;
+        info = new ControlBlock();
+        info->data = alloc.allocate(n);
+        std::memcpy(info->data, data, n);
+        info->ref.fetch_add(1);
+        info->size = n;
+        info->data[n] = '\0';
     }
 
 public:
@@ -69,24 +80,17 @@ public:
     cow_base_string() = default;
 
     cow_base_string(const CharT* data, size_t n){
-        Allocator alloc;
-        info = new ControlBlock();
-        info->data = alloc.allocate(n);
-        std::memcpy(info->data, data, n);
-        info->ref.fetch_add(1);
-        info->size = n;
-        info->data[n] = '\0';
+        create(data, n);
+    }
+
+    cow_base_string(const CharT* data){
+        size_t n = std::strlen(data) + 1;
+        create(data, n);
     }
 
     template<size_t N>
     cow_base_string(const CharT (&data)[N]){
-        Allocator alloc;
-        info = new ControlBlock();
-        info->data = alloc.allocate(N);
-        std::memcpy(info->data, data, N);
-        info->ref.fetch_add(1);
-        info->size = N ;
-        info->data[N] = '\0';
+        create(&data[0], N);
     }
 
     cow_base_string(const cow_base_string& str){
@@ -103,12 +107,14 @@ public:
         clean();
         info = str.info;
         info->ref.fetch_add(1);
+        return *this;
     }
 
     cow_base_string& operator=(cow_base_string&& str){
         clean();
         info = str.info;
         str.info = nullptr;
+        return *this;
     }
 
     template<typename CharU,
@@ -171,7 +177,7 @@ public:
         return info->data[idx];
     }
 
-    CharT& at(size_t idx) const{
+    CharT at(size_t idx) const{
         if(!info) throw std::runtime_error("Nullptr exeption");
 
         if(idx > info->size - 2) throw std::out_of_range("");
@@ -185,7 +191,7 @@ public:
     }
 
     it begin(){
-        if(info){
+        if(info && info->data){
             restore();
             return it(info->data);
         }
@@ -193,9 +199,9 @@ public:
     }
 
     it end(){
-        if(info && info->size >= 1){
+        if(info && info->data && info->size >= 1){
             restore();
-            return it(info->data + info->size - 1);
+            return it(&(info->data[info->size - 1]));
         }
         return it();
     }
@@ -206,7 +212,7 @@ public:
     }
 
     const_it cend() const{
-        if(info && info->size >= 1) return const_it(info->data + info->size - 1);
+        if(info && info->data && info->size >= 1) return const_it(&(info->data[info->size]));
         return const_it();
     }
 
@@ -220,6 +226,114 @@ public:
         if(!info) return 0;
         return info->ref.load();
     }
+
+    it front(){
+        if(info && info->data){
+            restore();
+            return it(info->data);
+        }
+        return it();
+    }
+
+    const_it front() const{
+        if(info && info->data) return const_it(info->data);
+        return const_it();
+    }
+
+    it back(){
+        if(info && info->data){
+            restore();
+            return it(&(info->data[info->size - 2]));
+        }
+        return it();
+    }
+
+    const_it back() const{
+        if(info && info->data) return const_it(&(info->data[info->size - 2]));
+        return const_it();
+    }
+
+    cow_base_string copy() const{
+        if(!info || !info->data) return cow_base_string();
+        return cow_base_string(info->data, info->size);
+    }
+
+    void assign(const_it beg, const_it end){
+        Allocator alloc;
+        size_t size = end - beg + 1;
+        CharT* data = alloc.allocate(size);
+        std::memcpy(data, &(*beg), size - 1);
+        clean();
+        if(!info) info = new ControlBlock();
+        info->data = data;
+        info->size = size;
+        info->ref.fetch_add(1);
+        data[size - 1] = '\0';
+    }
+
+    cow_base_string substr(size_t beg, size_t end) const{
+        if(!info || !info->data) return cow_base_string();
+        if(end - beg == info->size - 1) return copy();
+        cow_base_string str;
+        str.assign(beg, end);
+        return str;
+    }
+
+
+    it find(CharT v){
+        if(!info || !info->data) return it();
+        if(info && info->data) restore();
+        for(size_t idx = 0; idx < size(); ++idx)
+            if(TraitsT::eq(v, info->data[idx])) return it(&(info->data[idx]));
+        return end();
+    }
+
+    const_it find(CharT v) const{
+        if(!info || !info->data) return const_it();
+        for(size_t idx = 0; idx < size(); ++idx)
+            if(TraitsT::eq(v, info->data[idx])) return const_it(&(info->data[idx]));
+        return cend();
+    }
+
+
+    it find(it beg, it end, CharT v){
+        if(!info || !info->data) return it();
+        if(info && info->data) restore();
+        for(auto it = beg; it != end; ++it)
+            if(TraitsT::eq(v, *it)) return it;
+        return end();
+    }
+
+    const_it find(const_it beg, const_it end, CharT v) const{
+        if(!info || !info->data) return const_it();
+        for(auto it = beg; it != end; it = std::next(it))
+            if(TraitsT::eq(v, *it)) return it;
+        return cend();
+    }
+
+    template<typename F>
+    it find_if(F pred){
+        if(!info || !info->data) return it();
+        if(info && info->data) restore();
+        for(size_t idx = 0; idx < size(); ++idx)
+            if(pred(info->data[idx])) return it(&(info->data[idx]));
+        return end();
+    }
+
+    template<typename F>
+    const_it find_if(F pred) const{
+        if(!info || !info->data) return const_it();
+        for(size_t idx = 0; idx < size(); ++idx)
+            if(pred(info->data[idx])) return const_it(&(info->data[idx]));
+        return cend();
+    }
+
+    size_t count(CharT v) const{
+        size_t res = 0;
+        for(size_t idx = 0; idx < size(); ++idx) if(TraitsT::eq(v, info->data[idx])) res++;
+        return res;
+    }
+
 };
 }
 
