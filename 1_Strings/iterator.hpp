@@ -33,6 +33,10 @@ public:
         return *data;
     }
 
+    typename StringIterator::reference operator*(){
+        return *data;
+    }
+
     StringIterator& operator++(){
         ++data;
         return *this;
