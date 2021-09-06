@@ -122,6 +122,10 @@ public:
         create(&data[0], N);
     }
 
+    cow_base_string(const_it beg, const_it end){
+        assign(beg, end);
+    }
+
     cow_base_string(const cow_base_string& str){
         info = str.info;
         info->ref.fetch_add(1);
@@ -551,4 +555,6 @@ std::basic_ostream<CharU, TraitsU>& operator<<(std::basic_ostream<CharU, TraitsU
     return os;
 }
 
+namespace my {
 using cow_string = my::cow_base_string<char>;
+}
