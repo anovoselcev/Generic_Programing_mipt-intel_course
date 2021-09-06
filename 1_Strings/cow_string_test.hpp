@@ -11,9 +11,9 @@
 void TestCreate(){
     const char* msg1 = "Message 1";
     const char  msg2[] = "Message 2";
-    cow_string str1(msg1);
-    cow_string str2(msg1, strlen(msg1));
-    cow_string str3(msg2);
+    my::cow_string str1(msg1);
+    my::cow_string str2(msg1, strlen(msg1));
+    my::cow_string str3(msg2);
     assert(str1 == "Message 1");
     assert(str2 == "Message 1");
     assert(str3 == "Message 2");
@@ -21,18 +21,18 @@ void TestCreate(){
 
 void Test_pb(){
     const char* msg1 = "Message 1";
-    cow_string str1(msg1);
+    my::cow_string str1(msg1);
     str1.push_back('+');
     assert('+' == *str1.back());
     auto sub = str1.substr(0, str1.size() - 1);
-    assert(sub == cow_string(msg1));
+    assert(sub == my::cow_string(msg1));
 }
 
 void Test_plus_new(){
     const char* msg1 = "Message 1";
     const char  msg2[] = "Message 2";
-    cow_string str1(msg1);
-    cow_string str2(msg2);
+    my::cow_string str1(msg1);
+    my::cow_string str2(msg2);
     auto str3 = str1 + str2;
     assert(str3 == "Message 1Message 2");
 
@@ -41,8 +41,8 @@ void Test_plus_new(){
 void Test_plus_mod(){
     const char* msg1 = "Message 1";
     const char  msg2[] = "Message 2";
-    cow_string str1(msg1);
-    cow_string str2(msg2);
+    my::cow_string str1(msg1);
+    my::cow_string str2(msg2);
     auto str3 = str1 + str2;
     assert(str3 == "Message 1Message 2");
     str1 += str2;
@@ -51,7 +51,7 @@ void Test_plus_mod(){
 
 void Test_erase(){
     const char* msg1 = "Message 1";
-    cow_string str1(msg1);
+    my::cow_string str1(msg1);
     str1.push_back('+');
     assert('+' == *str1.back());
     auto it = str1.cfind('+');
@@ -61,7 +61,7 @@ void Test_erase(){
 
 void Test_erase_range(){
     const char* msg1 = "Message 1";
-    cow_string str1(msg1);
+    my::cow_string str1(msg1);
     str1.push_back('+');
     assert('+' == *str1.back());
     auto it = str1.find('s');
@@ -71,8 +71,8 @@ void Test_erase_range(){
 
 void Test_idx(){
     const char* msg1 = "Message 1";
-    cow_string str1(msg1);
-    cow_string str2(str1);
+    my::cow_string str1(msg1);
+    my::cow_string str2(str1);
     assert(str1.references() == str2.references());
     assert(str1.references() == 2);
     str1[0] = '}';
@@ -83,13 +83,13 @@ void Test_idx(){
 }
 
 void Test_concur(){
-    cow_string str = "Concurency d";
+    my::cow_string str = "Concurency d";
     std::condition_variable cv;
     std::mutex m;
     bool f = false;
     auto th = [&str, &cv, &m, &f](){
         std::unique_lock<std::mutex> ul(m);
-        cow_string str2(str);
+        my::cow_string str2(str);
         cv.wait(ul, [&f]{return f;});
     };
     std::vector<std::thread> threads(100);
@@ -116,4 +116,5 @@ void Test_cow_string(){
     Test_erase_range();
     Test_idx();
     Test_concur();
+    std::cout << "COW string tests passed\n";
 }
