@@ -13,19 +13,22 @@ class base_string{
     using const_it = StringIterator<const CharT>;
 
     size_t size_ = 0;
+
+    struct Large{
+        CharT* data = nullptr;
+        size_t cap  = 0;
+    };
+
     union{
-        struct{
-            CharT* data = nullptr;
-            size_t cap  = 0;
-        } large;
-        char small[sizeof (large)];
+        Large large;
+        CharT small[sizeof (Large)];
     };
 
     void create(const CharT* data, size_t n){
-        if(n < sizeof (large)){
-            std::memset(&small[0], '\0', sizeof (large));
+        if(n < sizeof (Large)){
+            std::memset(&small[0], '\0', sizeof (Large));
             std::memcpy(&small[0], data, n);
-            size_ = 0;
+            size_ = n;
         }
         else{
             Allocator alloc;
@@ -37,23 +40,39 @@ class base_string{
         }
     }
 
+    void restore(){
+        Allocator alloc;
+        CharT* it = alloc.allocate((size_ +  1) * 2);
+        std::memcpy(it, choose(), size_ - 1);
+        alloc.deallocate(large.data, large.cap);
+        large.cap = (size_ + 1) * 2;
+        large.data = it;
+    }
+
     CharT* choose(){
         CharT* it = nullptr;
-        if(size_ < sizeof (large)) it = &small[0];
+        if(size_ < sizeof (Large)) it = &small[0];
         else                       it = large.data;
         return it;
     }
 
     CharT* choose(const base_string& str) const{
         CharT* it = nullptr;
-        if(str.size_ < sizeof (large)) it = &str.small[0];
+        if(str.size_ < sizeof (Large)) it = &str.small[0];
         else                           it = str.large.data;
         return it;
     }
 
 public:
 
-    base_string() = default;
+    ~base_string(){
+        if(size_ >= sizeof (Large)){
+            Allocator alloc;
+            alloc.deallocate(large.data, large.cap);
+        }
+    }
+
+    base_string(){}
 
     base_string(const CharT* data, size_t n){
         create(data, n);
@@ -167,7 +186,9 @@ public:
     }
 
     const CharT* c_str() const{
-        CharT* it = choose();
+        const CharT* it = nullptr;
+        if(size_ < sizeof (Large)) it = &small[0];
+        else                       it = large.data;
         return it;
     }
 
@@ -225,7 +246,7 @@ public:
     void assign(const_it beg, const_it end){
         size_t size = end - beg + 1;
         Allocator alloc;
-        if(size < sizeof (large)){
+        if(size < sizeof (Large)){
             if(large.data){
                 alloc.deallocate(large.cap);
                 large.cap = 0;
@@ -305,6 +326,87 @@ public:
         return res;
     }
 
+    void push_back(const CharT& el){
+        if(size_ == 0)
+            create(&el, 2, true);
+        return;
+
+        CharT* it = nullptr;
+        if(size_ + 1 < sizeof (Large)){
+            it = &small[0];
+
+        }
+        else if(size_ + 1 < large.cap){
+            it = &large.data;
+        }
+        else{
+            restore();
+            it = large.data;
+        }
+        it[size_] = el;
+        it[size_ + 1] = '\0';
+        size_++;
+
+    }
+
+    void push_back(CharT&& el){
+        if(size_ == 0)
+            create(&el, 2, true);
+        return;
+
+        CharT* it = nullptr;
+        if(size_ + 1 < sizeof (Large)){
+            it = &small[0];
+
+        }
+        else if(size_ + 1 < large.cap){
+            it = &large.data;
+        }
+        else{
+            restore();
+            it = large.data;
+        }
+        it[size_] = el;
+        it[size_ + 1] = '\0';
+        size_++;
+    }
+
+    void erase(const_it targ){
+        if(targ == cend() || targ == const_it()) return;
+        if(size_ == 0) return;
+        size_t idx = 0;
+        auto it = cbegin();
+        while(it != targ){
+            idx++;
+            it = std::next(it, 1);
+        }
+        CharT* ptr = choose();
+        for(size_t i = idx; i < size_ - 1; ++i){
+            std::swap(ptr[idx], ptr[idx + 1]);
+        }
+        size_--;
+    }
+
+    void erase(it beg, it end){
+        if(beg == this->end() || beg == it() || beg == end) return;
+        if(size_ == 0) return;
+        size_t dist = std::distance(beg, end);
+        if(end == this->end()){
+            std::swap(*beg, *(this->end()));
+            size_ -= dist;
+            return;
+        }
+        auto it = end;
+        while(it != this->end()){
+            auto rem_it = std::next(beg, 1);
+            std::swap(*it, *beg);
+            it = std::next(it, 1);
+            beg = rem_it;
+        }
+        std::swap(*it, *beg);
+        size_ -= dist;
+    }
+
 };
 }
 
@@ -316,5 +418,7 @@ std::basic_ostream<CharU, TraitsU>& operator<<(std::basic_ostream<CharU, TraitsU
     return os;
 }
 
+namespace my {
 using string = my::base_string<char>;
+}
 
